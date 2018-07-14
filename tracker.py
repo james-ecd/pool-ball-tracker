@@ -21,14 +21,16 @@ def setup_trackbars(range_filter):
 
 def get_arguments():
     ap = argparse.ArgumentParser()
-    ap.add_argument('-f', '--filter', required=True,
+    ap.add_argument('-f', '--filter', required=False,
                     help='Range filter. RGB or HSV')
     ap.add_argument('-w', '--webcam', required=False,
                     help='Use webcam', action='store_true')
+    ap.add_argument('-i', '--image', required=False,
+                    help='Still image - for debugging')
     args = vars(ap.parse_args())
 
-    if not args['filter'].upper() in ['RGB', 'HSV']:
-        ap.error("Please speciy a correct filter.")
+    #if not args['filter'].upper() in ['RGB', 'HSV']:
+        #ap.error("Please speciy a correct filter.")
 
     return args
 
@@ -43,7 +45,7 @@ def get_trackbar_values(range_filter):
     return values
 
 
-def main():
+def oldMain():
     args = get_arguments()
 
     range_filter = args['filter'].upper()
@@ -105,6 +107,17 @@ def main():
 
         if cv2.waitKey(1) & 0xFF is ord('q'):
             break
+
+
+def main():
+    args = get_arguments()
+
+    img = cv2.imread(args['image'],0)
+
+    imgS = cv2.resize(img, (960, 540))
+    cv2.imshow('image', imgS)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
 
 
 if __name__ == '__main__':
