@@ -24,11 +24,69 @@ class Game:
     def loadSettings(self):
         with open('settings.json') as f:
             data = json.load(f)
-        return data['rgb'], data['hsv'], data['values']
+        return data['rgb'], data['hsv'], data['yellow'], data['red'], data['black']
 
     def __init__(self):
-        self.rgb, self.hsv, self.filterValues = self.loadSettings()
+        self.rgb, self.hsv, self.yellow, self.red, self.black = self.loadSettings()
+        self.yellowLower = tuple(self.yellow[:3])
+        self.yellowHigher = tuple(self.yellow[3:])
+        self.redLower = tuple(self.red[:3])
+        self.redHigher = tuple(self.red[3:])
+        self.blackLower = tuple(self.black[:3])
+        self.blackHigher = tuple(self.black[3:])
         self.args = self.get_arguments()
+
+    def drawCircles(self, frame, mask, label):
+        cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL,
+                                cv2.CHAIN_APPROX_SIMPLE)
+        cnts = cnts[0] if imutils.is_cv2() else cnts[1]
+        center = None
+
+        if len(cnts) > 0:
+            for c in cnts:
+                ((x, y), radius) = cv2.minEnclosingCircle(c)
+                M = cv2.moments(c)
+                center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+
+                if radius > 4:
+                    cv2.circle(frame, (int(x), int(y)), int(radius),
+                               (0, 255, 255), 2)
+                    cv2.circle(frame, center, 5, (0, 0, 255), -1)
+                    cv2.putText(frame, label, (center[0] + 10, center[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
+
+    def processFrame(self, frame):
+        frame = imutils.resize(frame, width=800)
+        originialFrame = frame.copy()
+        blur = cv2.GaussianBlur(frame, (11, 11), 0)
+
+        if self.hsv:
+            yellowFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
+            redFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
+            #blackFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
+        elif self.rgb:
+            yellowFilter = blur.copy()
+            redFilter = blur.copy()
+            # blackFilter = blur.copy()
+            originialFrame = frame.copy()
+        else:
+            raise NotImplementedError('Only HSV or RGB filters are supported. Please use one of these')
+
+        yellowMask = cv2.inRange(yellowFilter, self.yellowLower, self.yellowHigher)
+        redMask = cv2.inRange(redFilter, self.redLower, self.redHigher)
+        # blackMask = cv2.inRange(blackFilter, blackLower, blackHigher)
+
+        yellowMask = cv2.erode(yellowMask, None, iterations=2)
+        yellowMask = cv2.dilate(yellowMask, None, iterations=2)
+        redMask = cv2.erode(redMask, None, iterations=2)
+        redMask = cv2.dilate(redMask, None, iterations=2)
+        # blackMask = cv2.erode(blackMask, None, iterations=2)
+        # blackMask = cv2.dilate(blackMask, None, iterations=2)
+
+        self.drawCircles(frame, yellowMask, 'yellow')
+        self.drawCircles(frame, redMask, 'red')
+        # self.drawCircles(frame, blackMask, 'black')
+
+        return frame, originialFrame
 
     def image(self):
         # Show ball tracking for single image
@@ -40,30 +98,23 @@ class Game:
 
     def video(self):
         # Ball tracking using a pre-recorded video source
-        if self.hsv:
-            ballLower = self.filterValues[:3]
-            ballHigher = self.filterValues[3:]
+        stream = cv2.VideoCapture(self.args['video'])
+        time.sleep(2.0)
 
-            stream = cv2.VideoCapture(self.args['video'])
-            time.sleep(2.0)
+        while True:
+            grabbed, frame = stream.read()
+            if not grabbed:
+                break
+            frame, originialFrame = self.processFrame(frame)
 
-            while True:
-                frame = stream.read()
-                if frame is None:
-                    break
+            cv2.imshow("Frame", frame)
+            cv2.imshow("Original", originialFrame)
+            key = cv2.waitKey(1) & 0xFF
 
-                frame = imutils.resize(frame, width=600)
-                blur = cv2.GaussianBlur(frame, (11, 11), 0)
-                hsv = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
-
-                mask = cv2.inRange(hsv, ballLower, ballHigher)
-                mask = cv2.erode(mask, None, iterations=2)
-                mask = cv2.dilate(mask, None, iterations=2)
-
-
-
-        else:
-            raise NotImplementedError('RGB filters are not implemented yet. Please use HSV')
+            if key == ord("q"):
+                break
+            time.sleep(0.20)
+        stream.release()
 
     def live(self):
         # Ball tracking using a live video source
@@ -81,6 +132,7 @@ class Game:
             self.live()
         else:
             raise ValueError('Either Image, Video or Webcam not specified. At-least one needed')
+        cv2.destroyAllWindows()
 
 
 if __name__ == '__main__':
