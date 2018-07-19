@@ -16,6 +16,8 @@ class Game:
                         help='Still image - for debugging')
         ap.add_argument('-v', '--video', required=False,
                         help='Use pre-recorded video source')
+        ap.add_argument('-d', '--debug', required=False,
+                        help='Toggles debugging features (shows masks etc)', action='store_true')
         args = vars(ap.parse_args())
 
         # TODO - Add checks for file extensions
@@ -24,17 +26,20 @@ class Game:
     def loadSettings(self):
         with open('settings.json') as f:
             data = json.load(f)
-        return data['rgb'], data['hsv'], data['yellow'], data['red'], data['black']
+        return data['rgb'], data['hsv'], data['yellow'], data['red'], data['black'], data['white']
 
     def __init__(self):
-        self.rgb, self.hsv, self.yellow, self.red, self.black = self.loadSettings()
+        self.rgb, self.hsv, self.yellow, self.red, self.black, self.white = self.loadSettings()
         self.yellowLower = tuple(self.yellow[:3])
         self.yellowHigher = tuple(self.yellow[3:])
         self.redLower = tuple(self.red[:3])
         self.redHigher = tuple(self.red[3:])
         self.blackLower = tuple(self.black[:3])
         self.blackHigher = tuple(self.black[3:])
+        self.whiteLower = tuple(self.white[:3])
+        self.whiteHigher = tuple(self.white[3:])
         self.args = self.get_arguments()
+        self.debug = self.args['debug']
 
     def drawCircles(self, frame, mask, label):
         cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL,
@@ -62,29 +67,41 @@ class Game:
         if self.hsv:
             yellowFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
             redFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
-            #blackFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
+            blackFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
+            whiteFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
         elif self.rgb:
             yellowFilter = blur.copy()
             redFilter = blur.copy()
-            # blackFilter = blur.copy()
+            blackFilter = blur.copy()
+            whiteFilter = blur.copy()
             originialFrame = frame.copy()
         else:
             raise NotImplementedError('Only HSV or RGB filters are supported. Please use one of these')
 
         yellowMask = cv2.inRange(yellowFilter, self.yellowLower, self.yellowHigher)
         redMask = cv2.inRange(redFilter, self.redLower, self.redHigher)
-        # blackMask = cv2.inRange(blackFilter, blackLower, blackHigher)
+        blackMask = cv2.inRange(blackFilter, self.blackLower, self.blackHigher)
+        whiteMask = cv2.inRange(whiteFilter, self.whiteLower, self.whiteHigher)
 
         yellowMask = cv2.erode(yellowMask, None, iterations=2)
         yellowMask = cv2.dilate(yellowMask, None, iterations=2)
         redMask = cv2.erode(redMask, None, iterations=2)
         redMask = cv2.dilate(redMask, None, iterations=2)
-        # blackMask = cv2.erode(blackMask, None, iterations=2)
-        # blackMask = cv2.dilate(blackMask, None, iterations=2)
+        blackMask = cv2.erode(blackMask, None, iterations=2)
+        blackMask = cv2.dilate(blackMask, None, iterations=2)
+        whiteMask = cv2.erode(whiteMask, None, iterations=2)
+        whiteMask = cv2.dilate(whiteMask, None, iterations=2)
 
         self.drawCircles(frame, yellowMask, 'yellow')
         self.drawCircles(frame, redMask, 'red')
-        # self.drawCircles(frame, blackMask, 'black')
+        self.drawCircles(frame, blackMask, 'black')
+        self.drawCircles(frame, whiteMask, 'white')
+
+        if self.debug:
+            cv2.imshow("yellow", yellowMask)
+            cv2.imshow("red", redMask)
+            cv2.imshow("black", blackMask)
+            cv2.imshow("white", whiteMask)
 
         return frame, originialFrame
 
@@ -113,7 +130,7 @@ class Game:
 
             if key == ord("q"):
                 break
-            time.sleep(0.20)
+            time.sleep(0.10)
         stream.release()
 
     def live(self):
