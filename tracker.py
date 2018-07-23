@@ -26,10 +26,10 @@ class Game:
     def loadSettings(self):
         with open('settings.json') as f:
             data = json.load(f)
-        return data['rgb'], data['hsv'], data['yellow'], data['red'], data['black'], data['white']
+        return data['rgb'], data['hsv'], data['yellow'], data['red'], data['black'], data['white'], data['roi']
 
     def __init__(self):
-        self.rgb, self.hsv, self.yellow, self.red, self.black, self.white = self.loadSettings()
+        self.rgb, self.hsv, self.yellow, self.red, self.black, self.white, self.roi = self.loadSettings()
         self.yellowLower = tuple(self.yellow[:3])
         self.yellowHigher = tuple(self.yellow[3:])
         self.redLower = tuple(self.red[:3])
@@ -47,6 +47,7 @@ class Game:
                                 cv2.CHAIN_APPROX_SIMPLE)
         cnts = cnts[0] if imutils.is_cv2() else cnts[1]
         center = None
+        r = self.roi
 
         if len(cnts) > 0:
             for c in cnts:
@@ -54,18 +55,19 @@ class Game:
                 M = cv2.moments(c)
                 center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
 
-                if 7 < radius < 20:
-                    cv2.circle(frame, (int(x), int(y)), int(radius),
+                if radius > 4:
+                    cv2.circle(frame[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])], (int(x), int(y)), int(radius),
                                (0, 255, 255), 2)
-                    cv2.circle(frame, center, 5, (0, 0, 255), -1)
-                    cv2.putText(frame, label, (center[0] + 10, center[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.4, labelColours[label], 1)
+                    cv2.circle(frame[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])], center, 5, (0, 0, 255), -1)
+                    cv2.putText(frame[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])], label, (center[0] + 10, center[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
 
     def processFrame(self, frame):
         frame = imutils.resize(frame, width=800)
         originialFrame = frame.copy()
         #kernel = np.ones((15, 15), np.float32) / 225
         #smoothed = cv2.filter2D(frame, -1, kernel)
-        blur = cv2.GaussianBlur(frame, (5, 5), 0)
+        blur = cv2.GaussianBlur(frame, (15, 15), 0)
+        r = self.roi
 
         if self.hsv:
             yellowFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
@@ -73,11 +75,10 @@ class Game:
             blackFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
             whiteFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
         elif self.rgb:
-            yellowFilter = blur.copy()
-            redFilter = blur.copy()
-            blackFilter = blur.copy()
-            whiteFilter = blur.copy()
-            originialFrame = frame.copy()
+            yellowFilter = blur.copy()[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
+            redFilter = blur.copy()[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
+            blackFilter = blur.copy()[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
+            whiteFilter = blur.copy()[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
         else:
             raise NotImplementedError('Only HSV or RGB filters are supported. Please use one of these')
 
