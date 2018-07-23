@@ -42,6 +42,7 @@ class Game:
         self.debug = self.args['debug']
 
     def drawCircles(self, frame, mask, label):
+        labelColours = {'white': (225, 225, 225), 'black': (0, 0, 0), 'yellow': (225, 225, 0), 'red': (0, 0, 225)}
         cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL,
                                 cv2.CHAIN_APPROX_SIMPLE)
         cnts = cnts[0] if imutils.is_cv2() else cnts[1]
@@ -53,16 +54,18 @@ class Game:
                 M = cv2.moments(c)
                 center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
 
-                if radius > 4:
+                if 7 < radius < 20:
                     cv2.circle(frame, (int(x), int(y)), int(radius),
                                (0, 255, 255), 2)
                     cv2.circle(frame, center, 5, (0, 0, 255), -1)
-                    cv2.putText(frame, label, (center[0] + 10, center[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
+                    cv2.putText(frame, label, (center[0] + 10, center[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.4, labelColours[label], 1)
 
     def processFrame(self, frame):
         frame = imutils.resize(frame, width=800)
         originialFrame = frame.copy()
-        blur = cv2.GaussianBlur(frame, (11, 11), 0)
+        #kernel = np.ones((15, 15), np.float32) / 225
+        #smoothed = cv2.filter2D(frame, -1, kernel)
+        blur = cv2.GaussianBlur(frame, (5, 5), 0)
 
         if self.hsv:
             yellowFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
