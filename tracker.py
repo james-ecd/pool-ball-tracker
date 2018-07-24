@@ -4,9 +4,30 @@ import numpy as np
 import imutils
 import json
 import time
+import uuid
 
 
 class Game:
+
+    class Ball:
+
+        def __init__(self, uid, center, radius, colour):
+            self.uuid = uid
+            self.centerX = center[0]
+            self.centerY = center[1]
+            self.radius = radius
+            self.colour = colour
+
+        def __eq__(self, other):
+            return self.centerX == other.centerX and self.centerY == other.centerY
+
+        def isBall(self, newCenter):
+            return self.centerX-2 <= newCenter[0] <= self.centerX+2 and self.centerY-2 <= newCenter[1] <= self.centerY+2
+
+        def update(self, center):
+            self.centerX = center[0]
+            self.centerY = center[1]
+
 
     def get_arguments(self):
         ap = argparse.ArgumentParser()
@@ -40,8 +61,10 @@ class Game:
         self.whiteHigher = tuple(self.white[3:])
         self.args = self.get_arguments()
         self.debug = self.args['debug']
+        self.balls = []
+        self.firstRun = True
 
-    def drawCircles(self, frame, mask, label):
+    def findCircles(self, frame, mask, label):
         labelColours = {'white': (225, 225, 225), 'black': (0, 0, 0), 'yellow': (225, 225, 0), 'red': (0, 0, 225)}
         cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL,
                                 cv2.CHAIN_APPROX_SIMPLE)
@@ -50,16 +73,46 @@ class Game:
         r = self.roi
 
         if len(cnts) > 0:
+            print('\n%s len(cnts): %s' % (label, len(cnts)))
             for c in cnts:
                 ((x, y), radius) = cv2.minEnclosingCircle(c)
                 M = cv2.moments(c)
-                center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+                center = (int(M["m10"] / M["m00"])+1, int(M["m01"] / M["m00"])+1)
 
-                if radius > 4:
-                    cv2.circle(frame[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])], (int(x), int(y)), int(radius),
-                               (0, 255, 255), 2)
-                    cv2.circle(frame[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])], center, 5, (0, 0, 255), -1)
-                    cv2.putText(frame[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])], label, (center[0] + 10, center[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
+                if 4 < radius < 15:
+                    if self.firstRun:
+                        self.balls.append(self.Ball(uuid.uuid4(), center, radius, label))
+                        self.drawCircle(frame, center, x, y, radius, label)
+                        self.firstRun = False
+                        break
+
+                    for ball in self.balls:
+                        if ball.isBall(center):
+                            if ball.colour == label:
+                                ball.update(center)
+                                self.drawCircle(frame, center, x, y, radius, label)
+                                break
+                            else:
+                                print("Dupe ball of different colour found: orig -> %s, found -> %s" % (ball.colour, label))
+                                break
+                    else:
+                        self.balls.append(self.Ball(uuid.uuid4(), center, radius, label))
+                        self.drawCircle(frame, center, x, y, radius, label)
+
+    def drawCircle(self, frame, center, x, y, radius, label):
+        r = self.roi
+        cv2.circle(frame[int(r[1]):int(r[1] + r[3]), int(r[0]):int(r[0] + r[2])], (int(x), int(y)), int(radius),
+                   (0, 255, 255), 2)
+        cv2.circle(frame[int(r[1]):int(r[1] + r[3]), int(r[0]):int(r[0] + r[2])], center, 5, (0, 0, 255), -1)
+        cv2.putText(frame[int(r[1]):int(r[1] + r[3]), int(r[0]):int(r[0] + r[2])], label, (center[0] + 10, center[1]),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
+
+    def printBallStates(self):
+        counts = {'yellow': 0, 'red':0, 'white':0, 'black':0}
+        for b in self.balls:
+            counts[b.colour] += 1
+        print('\n White:%s, Black:%s, Red:%s, Yellow:%s\n' % (counts['white'], counts['black'], counts['red'], counts['yellow']))
+
 
     def processFrame(self, frame):
         frame = imutils.resize(frame, width=800)
@@ -96,10 +149,10 @@ class Game:
         whiteMask = cv2.erode(whiteMask, None, iterations=2)
         whiteMask = cv2.dilate(whiteMask, None, iterations=2)
 
-        self.drawCircles(frame, yellowMask, 'yellow')
-        self.drawCircles(frame, redMask, 'red')
-        self.drawCircles(frame, blackMask, 'black')
-        self.drawCircles(frame, whiteMask, 'white')
+        self.findCircles(frame, whiteMask, 'white')
+        self.findCircles(frame, redMask, 'red')
+        self.findCircles(frame, yellowMask, 'yellow')
+        self.findCircles(frame, blackMask, 'black')
 
         if self.debug:
             cv2.imshow("yellow", yellowMask)
@@ -127,14 +180,14 @@ class Game:
             if not grabbed:
                 break
             frame, originialFrame = self.processFrame(frame)
-
             cv2.imshow("Frame", frame)
             cv2.imshow("Original", originialFrame)
+            self.printBallStates()
             key = cv2.waitKey(1) & 0xFF
 
             if key == ord("q"):
                 break
-            time.sleep(0.10)
+            time.sleep(0.05)
         stream.release()
 
     def live(self):
