@@ -7,27 +7,48 @@ import time
 import uuid
 
 
+class GameManager:
+
+    def __init__(self):
+        self.missingBalls = []
+        self._balls = {'white': [], 'black': [], 'yellow': [], 'red': []}
+
+    def newBall(self, center, radius, label):
+        self._balls[label].append(Ball(uuid.uuid4(), center, radius, label))
+
+    @property
+    def balls(self):
+        return [x for i in self._balls.values() for x in i]
+
+    @property
+    def maxBalls(self):
+        return {'white': len(self._balls['white']) == 1,
+                'black': len(self._balls['black']) == 1,
+                'yellow': len(self._balls['yellow']) == 7,
+                'red': len(self._balls['red']) == 7}
+
+
+class Ball:
+
+    def __init__(self, uid, center, radius, colour):
+        self.uuid = uid
+        self.centerX = center[0]
+        self.centerY = center[1]
+        self.radius = radius
+        self.colour = colour
+
+    def __eq__(self, other):
+        return self.centerX == other.centerX and self.centerY == other.centerY
+
+    def isBall(self, newCenter):
+        return self.centerX-2 <= newCenter[0] <= self.centerX+2 and self.centerY-2 <= newCenter[1] <= self.centerY+2
+
+    def update(self, center):
+        self.centerX = center[0]
+        self.centerY = center[1]
+
+
 class Game:
-
-    class Ball:
-
-        def __init__(self, uid, center, radius, colour):
-            self.uuid = uid
-            self.centerX = center[0]
-            self.centerY = center[1]
-            self.radius = radius
-            self.colour = colour
-
-        def __eq__(self, other):
-            return self.centerX == other.centerX and self.centerY == other.centerY
-
-        def isBall(self, newCenter):
-            return self.centerX-2 <= newCenter[0] <= self.centerX+2 and self.centerY-2 <= newCenter[1] <= self.centerY+2
-
-        def update(self, center):
-            self.centerX = center[0]
-            self.centerY = center[1]
-
 
     def get_arguments(self):
         ap = argparse.ArgumentParser()
@@ -61,7 +82,7 @@ class Game:
         self.whiteHigher = tuple(self.white[3:])
         self.args = self.get_arguments()
         self.debug = self.args['debug']
-        self.balls = []
+        self.gameManager = GameManager()
         self.firstRun = True
 
     def findCircles(self, frame, mask, label):
@@ -81,12 +102,12 @@ class Game:
 
                 if 4 < radius < 15:
                     if self.firstRun:
-                        self.balls.append(self.Ball(uuid.uuid4(), center, radius, label))
+                        self.gameManager.newBall(center, radius, label)
                         self.drawCircle(frame, center, x, y, radius, label)
                         self.firstRun = False
                         break
 
-                    for ball in self.balls:
+                    for ball in self.gameManager.balls:
                         if ball.isBall(center):
                             if ball.colour == label:
                                 ball.update(center)
@@ -96,7 +117,7 @@ class Game:
                                 print("Dupe ball of different colour found: orig -> %s, found -> %s" % (ball.colour, label))
                                 break
                     else:
-                        self.balls.append(self.Ball(uuid.uuid4(), center, radius, label))
+                        self.gameManager.newBall(center, radius, label)
                         self.drawCircle(frame, center, x, y, radius, label)
 
     def drawCircle(self, frame, center, x, y, radius, label):
@@ -108,8 +129,8 @@ class Game:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
 
     def printBallStates(self):
-        counts = {'yellow': 0, 'red':0, 'white':0, 'black':0}
-        for b in self.balls:
+        counts = {'yellow': 0, 'red': 0, 'white': 0, 'black': 0}
+        for b in self.gameManager.balls:
             counts[b.colour] += 1
         print('\n White:%s, Black:%s, Red:%s, Yellow:%s\n' % (counts['white'], counts['black'], counts['red'], counts['yellow']))
 
