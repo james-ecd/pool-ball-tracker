@@ -10,42 +10,123 @@ import uuid
 class GameManager:
 
     def __init__(self):
+        self.firstRun = True
         self.missingBalls = []
-        self._balls = {'white': [], 'black': [], 'yellow': [], 'red': []}
+        self._balls = {'white': {}, 'black': {}, 'yellow': {}, 'red': {}}
+        # Frame variable
+        self._frameBalls = {'white': {}, 'black': {}, 'yellow': {}, 'red': {}}
+        self._frameNotFound = []
 
     def newBall(self, center, radius, label):
-        self._balls[label].append(Ball(uuid.uuid4(), center, radius, label))
+        a, b = self.findBall(center, label)
+        if a:
+            self._balls[label][b.uuid].update(center)
+            self._frameBalls[label][b.uuid] = b
+        else:
+            u = uuid.uuid4()
+            if self.firstRun:
+                self._balls[label][u] = Ball(u, center, radius, label)
+                self._frameBalls[label][u] = self._balls[label][u]
+            else:
+                if self.missingBalls:
+                    for b in self.missingBalls:
+                        if b.isBall(center, label, missing=True):
+                            self.missingBalls.remove(b)
+                            b.update(center)
+                            self._balls[label][b.uuid] = b
+                            self._frameBalls[label][b.uuid] = b
+                            break
+                    else:
+                        self._frameNotFound.append(Ball(u, center, radius, label))
+                else:
+                    self._frameNotFound.append(Ball(u, center, radius, label))
+
+    def findBall(self, center, label):
+        for b in self._balls[label].values():
+            if b.isBall(center, label):
+                return True, b
+        return False, None
 
     @property
     def balls(self):
-        return [x for i in self._balls.values() for x in i]
+        return [x for i in self._balls.values() for x in i.values()]
 
     @property
     def maxBalls(self):
-        return {'white': len(self._balls['white']) == 1,
-                'black': len(self._balls['black']) == 1,
-                'yellow': len(self._balls['yellow']) == 7,
-                'red': len(self._balls['red']) == 7}
+        return self._maxBalls(self._balls)
+
+    @property
+    def maxBallsFrame(self):
+        return self._maxBalls(self._frameBalls)
+
+    @property
+    def totalMaxBalls(self):
+        b = self._maxBalls(self._balls)
+        return b['white'] and b['black'] and b['yellow'] and b['red']
+
+    @property
+    def totalMaxBallsFrame(self):
+        b = self._maxBalls(self._frameBalls)
+        return b['white'] and b['black'] and b['yellow'] and b['red']
+
+    def _maxBalls(self, x):
+        return {'white': len(x['white']) == 1,
+                'black': len(x['black']) == 1,
+                'yellow': len(x['yellow']) == 7,
+                'red': len(x['red']) == 7}
+
+    def getMissingBalls(self):
+        miss = []
+        for l, ballGroup in self._balls.items():
+            for b in ballGroup.values():
+               if b.uuid not in self._frameBalls[l].keys():
+                    miss.append(b)
+                    print('New missing ball found with uuid:%s' % b.uuid)
+        return miss
+
+    def endFrame(self):
+        if self.firstRun:
+            self.firstRun = False
+            assert self.maxBalls['white'] == True, 'Initial white ball count is not 1'
+            assert self.maxBalls['black'] == True, 'Initial black ball count is not 1'
+           # assert self.maxBalls['yellow'] == True, 'Initial yellow ball count is not 7'
+            assert self.maxBalls['red'] == True, 'Initial red ball count is not 7'
+        if self.totalMaxBallsFrame:
+            self._frameBalls = {'white': {}, 'black': {}, 'yellow': {}, 'red': {}}
+            self._frameNotFound = []
+        else:
+            mbs = self.getMissingBalls()
+            for b in mbs:
+                self.missingBalls.append(b)
+                del self._balls[b.label][b.uuid]
+
 
 
 class Ball:
 
-    def __init__(self, uid, center, radius, colour):
+    def __init__(self, uid, center, radius, label):
         self.uuid = uid
         self.centerX = center[0]
         self.centerY = center[1]
         self.radius = radius
-        self.colour = colour
+        self.label = label
 
     def __eq__(self, other):
         return self.centerX == other.centerX and self.centerY == other.centerY
 
-    def isBall(self, newCenter):
-        return self.centerX-2 <= newCenter[0] <= self.centerX+2 and self.centerY-2 <= newCenter[1] <= self.centerY+2
+    def __hash__(self):
+        return hash(self.uuid)
+
+    def isBall(self, newCenter, label, missing=False):
+        mg = 20
+        if missing:
+            return label == self.label and self.centerX - mg <= newCenter[0] <= self.centerX + mg and self.centerY - mg <= newCenter[1] <= self.centerY + mg
+        return label == self.label and self.centerX-2 <= newCenter[0] <= self.centerX+2 and self.centerY-2 <= newCenter[1] <= self.centerY+2
 
     def update(self, center):
         self.centerX = center[0]
         self.centerY = center[1]
+
 
 
 class Game:
@@ -108,13 +189,13 @@ class Game:
                         break
 
                     for ball in self.gameManager.balls:
-                        if ball.isBall(center):
-                            if ball.colour == label:
+                        if ball.isBall(center, label):
+                            if ball.label == label:
                                 ball.update(center)
                                 self.drawCircle(frame, center, x, y, radius, label)
                                 break
                             else:
-                                print("Dupe ball of different colour found: orig -> %s, found -> %s" % (ball.colour, label))
+                                print("Dupe ball of different colour found: orig -> %s, found -> %s" % (ball.label, label))
                                 break
                     else:
                         self.gameManager.newBall(center, radius, label)
@@ -131,8 +212,9 @@ class Game:
     def printBallStates(self):
         counts = {'yellow': 0, 'red': 0, 'white': 0, 'black': 0}
         for b in self.gameManager.balls:
-            counts[b.colour] += 1
+            counts[b.label] += 1
         print('\n White:%s, Black:%s, Red:%s, Yellow:%s\n' % (counts['white'], counts['black'], counts['red'], counts['yellow']))
+        print(str(self.gameManager.maxBalls))
 
 
     def processFrame(self, frame):
@@ -181,6 +263,7 @@ class Game:
             cv2.imshow("black", blackMask)
             cv2.imshow("white", whiteMask)
 
+        self.gameManager.endFrame()
         return frame, originialFrame
 
     def image(self):
