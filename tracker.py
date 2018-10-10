@@ -87,10 +87,10 @@ class GameManager:
     def endFrame(self):
         if self.firstRun:
             self.firstRun = False
-            assert self.maxBalls['white'] == True, 'Initial white ball count is not 1'
-            assert self.maxBalls['black'] == True, 'Initial black ball count is not 1'
+            # self.maxBalls['white'] == True, 'Initial white ball count is not 1'
+            #assert self.maxBalls['black'] == True, 'Initial black ball count is not 1'
            # assert self.maxBalls['yellow'] == True, 'Initial yellow ball count is not 7'
-            assert self.maxBalls['red'] == True, 'Initial red ball count is not 7'
+            #assert self.maxBalls['red'] == True, 'Initial red ball count is not 7'
         if self.totalMaxBallsFrame:
             self._frameBalls = {'white': {}, 'black': {}, 'yellow': {}, 'red': {}}
             self._frameNotFound = []
@@ -135,8 +135,6 @@ class Game:
         ap = argparse.ArgumentParser()
         ap.add_argument('-l', '--live', required=False,
                         help='Use live video source', action='store_true')
-        ap.add_argument('-i', '--image', required=False,
-                        help='Still image - for debugging')
         ap.add_argument('-v', '--video', required=False,
                         help='Use pre-recorded video source')
         ap.add_argument('-d', '--debug', required=False,
@@ -175,7 +173,6 @@ class Game:
         r = self.roi
 
         if len(cnts) > 0:
-            print('\n%s len(cnts): %s' % (label, len(cnts)))
             for c in cnts:
                 ((x, y), radius) = cv2.minEnclosingCircle(c)
                 M = cv2.moments(c)
@@ -216,6 +213,12 @@ class Game:
         print('\n White:%s, Black:%s, Red:%s, Yellow:%s\n' % (counts['white'], counts['black'], counts['red'], counts['yellow']))
         print(str(self.gameManager.maxBalls))
 
+    def ballCounts(self):
+        counts = {'yellow': 0, 'red': 0, 'white': 0, 'black': 0}
+        for b in self.gameManager.balls:
+            counts[b.label] += 1
+        return counts
+
 
     def processFrame(self, frame):
         frame = imutils.resize(frame, width=800)
@@ -226,10 +229,10 @@ class Game:
         r = self.roi
 
         if self.hsv:
-            yellowFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
-            redFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
-            blackFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
-            whiteFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
+            yellowFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
+            redFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
+            blackFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
+            whiteFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
         elif self.rgb:
             yellowFilter = blur.copy()[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
             redFilter = blur.copy()[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
@@ -296,20 +299,61 @@ class Game:
 
     def live(self):
         # Ball tracking using a live video source
-        if self.hsv:
-            pass
-        else:
-            raise NotImplementedError('RGB filters are not implemented yet. Please use HSV')
+        stream = cv2.VideoCapture(0)
+        time.sleep(2.0)
+
+        while True:
+            grabbed, frame = stream.read()
+            if not grabbed:
+                break
+            frame, originialFrame = self.processFrame(frame)
+            cv2.imshow("Frame", frame)
+            cv2.imshow("Original", originialFrame)
+            self.printBallStates()
+            key = cv2.waitKey(1) & 0xFF
+
+            if key == ord("q"):
+                break
+            time.sleep(0.05)
+        stream.release()
+
+    def videoCount(self, video):
+        # Ball tracking using a pre-recorded video source
+        self.args = {'video': video}
+        stream = cv2.VideoCapture(self.args['video'])
+        time.sleep(0.5)
+
+        grabbed, frame = stream.read()
+        if not grabbed:
+            raise Exception('Problem reading the video file')
+        _, _ = self.processFrame(frame)
+
+        values = self.ballCounts()
+        stream.release()
+        return values
+
+    def liveCount(self):
+        # Ball tracking using a live video source
+        self.args = {'live': True}
+        stream = cv2.VideoCapture(0)
+        time.sleep(0.5)
+
+        grabbed, frame = stream.read()
+        if not grabbed:
+            raise Exception('Problem reading frames from the webcam feed')
+        _, _ = self.processFrame(frame)
+
+        values = self.ballCounts()
+        stream.release()
+        return values
 
     def run(self):
-        if self.args.get('image', False):
-            self.image()
-        elif self.args.get('video', False):
+        if self.args.get('video', False):
             self.video()
         elif self.args.get('live', False):
             self.live()
         else:
-            raise ValueError('Either Image, Video or Webcam not specified. At-least one needed')
+            raise ValueError('Either Video or Webcam not specified. At-least one needed')
         cv2.destroyAllWindows()
 
 
