@@ -347,6 +347,14 @@ class Game:
         stream.release()
         return values
 
+    def imageCount(self, path):
+        img = cv2.imread(self.args['image'], 0)
+        imgS = cv2.resize(img, (960, 540))
+        _, _ = self.processFrame(imgS)
+
+        values = self.ballCounts()
+        return values
+
     def run(self):
         if self.args.get('video', False):
             self.video()

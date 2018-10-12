@@ -2,6 +2,7 @@ import json
 import time
 import os
 import sys
+import glob
 import threading
 import itertools
 from collections import deque
@@ -36,6 +37,13 @@ class TableStateTracker:
 
     def update(self):
         ballData = self.game.liveCount()
+        self.stateQueue.append(self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1]))
+        print("Table state tracker updated")
+
+    def updateImage(self):
+        # Look for most recent file in directory
+        filename = "img/%s.jpg" % str(min([int(x[:-4]) for x in glob.glob("img/*.jpg")]))
+        ballData = self.game.imageCount(filename)
         self.stateQueue.append(self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1]))
         print("Table state tracker updated")
 
@@ -111,6 +119,11 @@ class BotHandler:
     def updateRecords(self):
         while True:
             self.stateTracker.update()
+            time.sleep(9)
+
+    def updateRecordsImage(self):
+        while True:
+            self.stateTracker.updateImage()
             time.sleep(9)
 
 
