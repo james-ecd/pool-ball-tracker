@@ -58,7 +58,15 @@ class Calibrate:
 
     def live(self):
         # Calibration using a live video source
-        raise NotImplementedError('Calibration not implemented for live video yet')
+        stream = cv2.VideoCapture(0)
+        time.sleep(2.0)
+
+        grabbed, frame = stream.read()
+        frame = imutils.resize(frame, width=800)
+        self.saveToFile(self.selectROI(frame))
+        print("Sucessfully updated settings.json")
+
+        stream.release()
 
     def run(self):
         if self.args.get('image', False):
