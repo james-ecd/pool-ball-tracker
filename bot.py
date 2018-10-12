@@ -64,6 +64,7 @@ class BotHandler:
         self.game = Game()
         self.stateTracker = TableStateTracker(self.game)
         self.token = self.config['slack']['token']
+        self.breakfastUsers = ['U632Q7URG', 'U5JRWM6KG', 'U6363BAMB', 'U5TRLN6LC']
 
     def run(self):
         background = threading.Thread(name="background_updater", target=self.updateRecords)
@@ -86,17 +87,26 @@ class BotHandler:
         for m in msg:
             if 'type' in m:
                 if m['type'] == 'message' and 'subtype' not in m:
-                    if '<@UDBJQHB6H>' in m['text'] and 'status' in m['text']:
-                        inUse, balls = self.stateTracker.state
-                        response = ""
-                        if inUse:
-                            response = "<@%s> The pool table is currently in use. Ball count: %s" % (m['user'], balls)
-                            bot.rtm_send_message(m['channel'], response, m['ts'])
-                        else:
-                            response = "<@%s> The pool table is currently free!." % m['user']
-                            bot.rtm_send_message(m['channel'], response, m['ts'])
+                    if '<@UDBJQHB6H>' in m['text']:
+                        if 'status' in m['text']:
+                            inUse, balls = self.stateTracker.state
+                            response = ""
+                            if inUse:
+                                response = "<@%s> The pool table is currently in use. Ball count: %s" % (m['user'], balls)
+                                bot.rtm_send_message(m['channel'], response, m['ts'])
+                            else:
+                                response = "<@%s> The pool table is currently free!." % m['user']
+                                bot.rtm_send_message(m['channel'], response, m['ts'])
 
-                        print(m['user'] + " requested pool table status and received response: '%s'" % response)
+                            print(m['user'] + " requested pool table status and received response: '%s'" % response)
+                        elif 'what is going on here' in m['text']:
+                            print(m['user'] + ' requested the current state of affairs')
+                            if m['user'] in self.breakfastUsers:
+                                print(m['user'] + ' is worthy')
+                                print(bot.api_call('chat.postEphemeral', channel=m['channel'], user=m['user'],
+                                                   text='BREAKFAST', as_user=True))
+                            else:
+                                print(m['user'] + ' is not worthy of the knowledge')
 
     def updateRecords(self):
         while True:
