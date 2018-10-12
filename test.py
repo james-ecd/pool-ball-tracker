@@ -10,6 +10,8 @@ from slackclient import SlackClient
 #    game = Game()
 #    print(game.videoCount('resources\\video-1531832402.mp4'))*/
 
+breakfast_users = ['U632Q7URG', 'U5JRWM6KG', 'U6363BAMB', 'U5TRLN6LC']
+
 def slackbot(token):
     bot = SlackClient(token)
 
@@ -24,10 +26,19 @@ def message_handler(msg, bot):
     for m in msg:
         if 'type' in m:
             if m['type'] == 'message' and 'subtype' not in m:
-                if '<@UDBJQHB6H>' in m['text'] and 'status' in m['text']:
-                    print(m['user'] + " requested pool table status")
-                    # Find out if the table is free
-                    bot.rtm_send_message(m['channel'], "<@" + m['user'] + "> The pool table is currently free", m['ts'])
+                if '<@UDBJQHB6H>' in m['text']:
+                    if 'status' in m['text']:
+                        print(m['user'] + ' requested pool table status')
+                        # Find out if the table is free
+                        bot.rtm_send_message(m['channel'], '<@' + m['user'] + '> The pool table is currently free', m['ts'])
+                    elif 'what is going on here' in m['text']:
+                        print(m)
+                        print(m['user'] + ' requested the current state of affairs')
+                        if m['user'] in breakfast_users:
+                            print(m['user'] + ' is worthy')
+                            print(bot.api_call('chat.postEphemeral', channel=m['channel'], user=m['user'], text='BREAKFAST', as_user=True))
+                        else:
+                            print(m['user'] + ' is not worthy of the knowledge')
 
 if __name__ == '__main__':
     with open('config.json', 'r') as cfgfile:
