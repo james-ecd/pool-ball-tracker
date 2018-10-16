@@ -178,7 +178,7 @@ class Game:
                 M = cv2.moments(c)
                 center = (int(M["m10"] / M["m00"])+1, int(M["m01"] / M["m00"])+1)
 
-                if 4 < radius < 15:
+                if 2 < radius < 15:
                     if self.firstRun:
                         self.gameManager.newBall(center, radius, label)
                         self.drawCircle(frame, center, x, y, radius, label)
