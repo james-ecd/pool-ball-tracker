@@ -135,7 +135,7 @@ class RestHandler:
 
         def get(self):
             inUse, balls = self.state.state
-            return {'inuse': inUse, 'balls': balls}
+            return {'inuse': inUse, 'balls': balls.ballData}
 
     def __init__(self, state):
         self.state = state
