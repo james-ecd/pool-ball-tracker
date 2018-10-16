@@ -8,7 +8,8 @@ import itertools
 from collections import deque
 from slackclient import SlackClient
 from tracker import Game
-
+from flask import Flask, request
+from flask_restful import Resource, Api
 
 class TableStateTracker:
     """
@@ -69,6 +70,7 @@ class BotHandler:
 
         self.game = Game()
         self.stateTracker = TableStateTracker(self.game)
+        self.restHandler = RestHandler(self.stateTracker)
         self.token = self.config['slack']['token']
         self.breakfastUsers = ['U632Q7URG', 'U5JRWM6KG', 'U6363BAMB', 'U5TRLN6LC']
 
@@ -123,6 +125,25 @@ class BotHandler:
         while True:
             self.stateTracker.updateImage()
             time.sleep(9)
+
+
+class RestHandler:
+    
+    class State(Resource):
+        def get(self, state):
+            inUse, balls = state.state
+            return {'inuse': inUse, 'balls': balls}
+
+    def __init__(self, state):
+        self.state = state
+        self.app = Flask(__name__)
+        self.api = Api(self.app)
+        self.api.add_resource(self.State, '/state', resource_class_args={'state': self.state})
+        self.thread = threading.Thread(name='rest_thread', target=self.run)
+        self.thread.start()
+
+    def run(self):
+        self.app.run()
 
 
 if __name__ == '__main__':
