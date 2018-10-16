@@ -25,15 +25,13 @@ class TableStateTracker:
                 self.hasChanged = previousRecord.ballData != self.ballData
 
     def __init__(self, game):
-        self.stateQueue = deque([], 360)
-        self.stateQueue.append(self.StateRecord({'yellow': 0, 'red': 0, 'white': 0, 'black': 0}, None, first=True))
-        for i in range(360):
-            self.stateQueue.append(self.StateRecord(
-                {'yellow': 0, 'red': 0, 'white': 0, 'black': 0},
-                self.stateQueue[len(self.stateQueue) - 1]
-            ))
-        print("Table state tracker initialized")
         self.game = game
+        ballData = self.game.liveCount()
+        self.stateQueue = deque([], 360)
+        self.stateQueue.append(self.StateRecord(ballData, None, first=True))
+        for i in range(360):
+            self.stateQueue.append(self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1]))
+        print("Table state tracker initialized")
 
     def update(self):
         ballData = self.game.liveCount()
