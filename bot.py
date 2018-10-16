@@ -103,7 +103,7 @@ class BotHandler:
                                 response = "<@%s> The pool table is currently in use. Ball count: %s" % (m['user'], balls)
                                 bot.rtm_send_message(m['channel'], response, m['ts'])
                             else:
-                                response = "<@%s> The pool table is currently free!." % m['user']
+                                response = "<@%s> The pool table is currently free! Ball count: %s" % (m['user'], balls)
                                 bot.rtm_send_message(m['channel'], response, m['ts'])
 
                             print(m['user'] + " requested pool table status and received response: '%s'" % response)
@@ -130,8 +130,11 @@ class BotHandler:
 class RestHandler:
     
     class State(Resource):
-        def get(self, state):
-            inUse, balls = state.state
+        def __init__(self, state):
+            self.state = state
+
+        def get(self):
+            inUse, balls = self.state.state
             return {'inuse': inUse, 'balls': balls}
 
     def __init__(self, state):
