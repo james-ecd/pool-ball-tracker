@@ -10,6 +10,7 @@ from slackclient import SlackClient
 from tracker import Game
 from flask import Flask, request
 from flask_restful import Resource, Api
+from flask_cors import CORS
 
 class TableStateTracker:
     """
@@ -141,6 +142,7 @@ class RestHandler:
         self.state = state
         self.app = Flask(__name__)
         self.api = Api(self.app)
+        CORS(self.app)
         self.api.add_resource(self.State, '/state', resource_class_kwargs={'state': self.state})
         self.thread = threading.Thread(name='rest_thread', target=self.run)
         self.thread.start()
