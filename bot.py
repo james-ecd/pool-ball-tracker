@@ -100,10 +100,10 @@ class BotHandler:
                             inUse, balls = self.stateTracker.state
                             response = ""
                             if inUse:
-                                response = "<@%s> The pool table is currently in use. Ball count: %s" % (m['user'], balls)
+                                response = "<@%s> The pool table is currently in use. Ball count: %s" % (m['user'], balls.ballData)
                                 bot.rtm_send_message(m['channel'], response, m['ts'])
                             else:
-                                response = "<@%s> The pool table is currently free! Ball count: %s" % (m['user'], balls)
+                                response = "<@%s> The pool table is currently free! Ball count: %s" % (m['user'], balls.ballData)
                                 bot.rtm_send_message(m['channel'], response, m['ts'])
 
                             print(m['user'] + " requested pool table status and received response: '%s'" % response)
@@ -141,7 +141,7 @@ class RestHandler:
         self.state = state
         self.app = Flask(__name__)
         self.api = Api(self.app)
-        self.api.add_resource(self.State, '/state', resource_class_args={'state': self.state})
+        self.api.add_resource(self.State, '/state', resource_class_kwargs={'state': self.state})
         self.thread = threading.Thread(name='rest_thread', target=self.run)
         self.thread.start()
 
