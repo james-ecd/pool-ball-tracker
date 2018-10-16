@@ -46,15 +46,14 @@ class TableStateTracker:
         self.stateQueue.append(self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1]))
         print("Table state tracker updated")
 
-    @property
-    def state(self):
+    def state(self, length):
         """
         Looks back over the last 5 mins (30 newest queue entries) and returns the determined table state
         :return:
             - Game in progress : bool
             - The state record object of the latest capture
         """
-        sample = list(reversed(list(itertools.islice(self.stateQueue, len(self.stateQueue) - 30, len(self.stateQueue)))))
+        sample = list(reversed(list(itertools.islice(self.stateQueue, len(self.stateQueue) - length, len(self.stateQueue)))))
         for r in sample:
             if r.hasChanged:
                 return True, self.stateQueue[len(self.stateQueue) - 1]
@@ -97,7 +96,7 @@ class BotHandler:
                 if m['type'] == 'message' and 'subtype' not in m:
                     if '<@UDBJQHB6H>' in m['text']:
                         if 'status' in m['text']:
-                            inUse, balls = self.stateTracker.state
+                            inUse, balls = self.stateTracker.state(30)
                             response = ""
                             if inUse:
                                 response = "<@%s> The pool table is currently in use. Ball count: %s" % (m['user'], balls.ballData)
@@ -134,8 +133,9 @@ class RestHandler:
             self.state = state
 
         def get(self):
-            inUse, balls = self.state.state
-            return {'inuse': inUse, 'balls': balls.ballData}
+            inUse, balls = self.state.state(30)
+            changedLast, _ = self.state.state(2)
+            return {'inuse': inUse, 'balls': balls.ballData, 'lastChanged': changedLast}
 
     def __init__(self, state):
         self.state = state
