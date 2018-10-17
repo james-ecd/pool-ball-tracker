@@ -5,6 +5,8 @@ import sys
 import glob
 import threading
 import itertools
+import cv2
+import random
 from collections import deque
 from slackclient import SlackClient
 from tracker import Game
@@ -34,33 +36,41 @@ class TableStateTracker:
         for i in range(360):
             self.stateQueue.append(self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1]))
         print("Table state tracker initialized")
+        self.counter = 0
+        self.signature = random.randint(0,1000)
 
     def update(self):
-        ballData = self.game.liveCount()
+        ballData, frame = self.game.liveCount()
+        cv2.imwrite("tmp\%s-%s.jpg" % (self.signature, self.counter), frame)
+        self.counter += 1
         self.stateQueue.append(self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1]))
-        print("Table state tracker updated")
+        #print("Table state tracker updated")
+        #print("%s - %s\n" % (ballData, self.stateQueue[len(self.stateQueue)-1].hasChanged))
+        
 
     def updateImage(self):
         # Look for most recent file in directory
         filename = "img/%s.jpg" % str(min([int(x[:-4]) for x in glob.glob("img/*.jpg")]))
         ballData = self.game.imageCount(filename)
-        self.stateQueue.append(self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1]))
-        print("Table state tracker updated")
+        self.stateQueue.append(self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1].ballData))
+        #print("Table state tracker updated")
 
-    def state(self, length):
+    def state(self, length, d=False):
         """
         Looks back over the last 5 mins (30 newest queue entries) and returns the determined table state
         :return:
             - Game in progress : bool
             - The state record object of the latest capture
         """
+        if d: print("\n")
         sample = list(reversed(list(itertools.islice(self.stateQueue, len(self.stateQueue) - length, len(self.stateQueue)))))
         for r in sample:
+            if d: print("r: %s" %r.hasChanged)
             if r.hasChanged:
                 return True, self.stateQueue[len(self.stateQueue) - 1]
         else:
             return False, self.stateQueue[len(self.stateQueue) - 1]
-        
+        if d: print("\n")
 
 class BotHandler:
 
@@ -97,13 +107,13 @@ class BotHandler:
                 if m['type'] == 'message' and 'subtype' not in m:
                     if '<@UDBJQHB6H>' in m['text']:
                         if 'status' in m['text']:
-                            inUse, balls = self.stateTracker.state(30)
+                            inUse, balls = self.stateTracker.state(24)
                             response = ""
                             if inUse:
-                                response = "<@%s> The pool table is currently in use. Ball count: %s" % (m['user'], balls.ballData)
+                                response = "<@%s> The pool table is currently in use :sadpanda:" % m['user']
                                 bot.rtm_send_message(m['channel'], response, m['ts'])
                             else:
-                                response = "<@%s> The pool table is currently free! Ball count: %s" % (m['user'], balls.ballData)
+                                response = "<@%s> The pool table is currently free! :happydance:" % m['user']
                                 bot.rtm_send_message(m['channel'], response, m['ts'])
 
                             print(m['user'] + " requested pool table status and received response: '%s'" % response)
@@ -119,7 +129,7 @@ class BotHandler:
     def updateRecords(self):
         while True:
             self.stateTracker.update()
-            time.sleep(9)
+            time.sleep(1)
 
     def updateRecordsImage(self):
         while True:
@@ -135,8 +145,7 @@ class RestHandler:
 
         def get(self):
             inUse, balls = self.state.state(30)
-            changedLast, _ = self.state.state(2)
-            return {'inuse': inUse, 'balls': balls.ballData, 'lastChanged': changedLast}
+            return {'inuse': inUse, 'balls': balls.ballData, 'lastChanged': self.state.stateQueue[len(self.state.stateQueue)-1].hasChanged}
 
     def __init__(self, state):
         self.state = state
@@ -149,7 +158,7 @@ class RestHandler:
 
     def run(self):
         self.app.run()
-
+        pass
 
 if __name__ == '__main__':
     bothandler = BotHandler()

@@ -87,10 +87,10 @@ class Game:
     def loadSettings(self):
         with open('settings.json') as f:
             data = json.load(f)
-        return data['rgb'], data['hsv'], data['yellow'], data['red'], data['black'], data['white'], data['roi']
+        return data['rgb'], data['hsv'], data['yellow'], data['red'], data['black'], data['white'], data['roi'], data['roiblack']
 
     def __init__(self):
-        self.rgb, self.hsv, self.yellow, self.red, self.black, self.white, self.roi = self.loadSettings()
+        self.rgb, self.hsv, self.yellow, self.red, self.black, self.white, self.roi, self.roiblack = self.loadSettings()
         self.yellowLower = tuple(self.yellow[:3])
         self.yellowHigher = tuple(self.yellow[3:])
         self.redLower = tuple(self.red[:3])
@@ -110,7 +110,6 @@ class Game:
                                 cv2.CHAIN_APPROX_SIMPLE)
         cnts = cnts[0] if imutils.is_cv2() else cnts[1]
         center = None
-        r = self.roi
 
         if len(cnts) > 0:
             for c in cnts:
@@ -118,12 +117,15 @@ class Game:
                 M = cv2.moments(c)
                 center = (int(M["m10"] / M["m00"])+1, int(M["m01"] / M["m00"])+1)
 
-                if 2 < radius < 15:
+                if 4 < radius < 15:
                     self.gameManager.newBall(center, radius, label)
-                    self.drawCircle(frame, center, x, y, radius, label)
+                    if label == 'black':
+                        self.drawCircle(frame, center, x, y, radius, label, self.roiblack)
+                    else:
+                        self.drawCircle(frame, center, x, y, radius, label, self.roi)
 
-    def drawCircle(self, frame, center, x, y, radius, label):
-        r = self.roi
+
+    def drawCircle(self, frame, center, x, y, radius, label, r):
         cv2.circle(frame[int(r[1]):int(r[1] + r[3]), int(r[0]):int(r[0] + r[2])], (int(x), int(y)), int(radius),
                    (0, 255, 255), 2)
         cv2.circle(frame[int(r[1]):int(r[1] + r[3]), int(r[0]):int(r[0] + r[2])], center, 5, (0, 0, 255), -1)
@@ -150,16 +152,17 @@ class Game:
         #smoothed = cv2.filter2D(frame, -1, kernel)
         blur = cv2.GaussianBlur(frame, (15, 15), 0)
         r = self.roi
+        rb = self.roiblack
 
         if self.hsv:
             yellowFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
             redFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
-            blackFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
+            blackFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)[int(rb[1]):int(rb[1]+rb[3]), int(rb[0]):int(rb[0]+rb[2])]
             whiteFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
         elif self.rgb:
-            yellowFilter = blur.copy()[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
+            yellowFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
             redFilter = blur.copy()[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
-            blackFilter = blur.copy()[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
+            blackFilter = blur.copy()[int(rb[1]):int(rb[1]+rb[3]), int(rb[0]):int(rb[0]+rb[2])]
             whiteFilter = blur.copy()[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
         else:
             raise NotImplementedError('Only HSV or RGB filters are supported. Please use one of these')
@@ -263,11 +266,11 @@ class Game:
         grabbed, frame = stream.read()
         if not grabbed:
             raise Exception('Problem reading frames from the webcam feed')
-        _, _ = self.processFrame(frame)
+        frame, _ = self.processFrame(frame)
 
         values = self.ballCounts()
         stream.release()
-        return values
+        return values, frame
 
     def imageCount(self, path):
         img = cv2.imread(self.args['image'], 0)
