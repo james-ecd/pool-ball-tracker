@@ -40,10 +40,13 @@ class TableStateTracker:
         self.signature = random.randint(0,1000)
 
     def update(self):
-        ballData, frame = self.game.liveCount()
-        #cv2.imwrite("tmp\%s-%s.jpg" % (self.signature, self.counter), frame)
+        ballData, tracked = self.game.liveCount()
+        print(tracked)
         self.counter += 1
-        self.stateQueue.append(self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1]))
+        rec = self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1])
+        self.stateQueue.append(rec)
+        if rec.hasChanged:
+            cv2.imwrite("tmp\%s-%s.jpg" % (self.signature, self.counter), tracked)
         #print("Table state tracker updated")
         #print("%s - %s\n" % (ballData, self.stateQueue[len(self.stateQueue)-1].hasChanged))
         
