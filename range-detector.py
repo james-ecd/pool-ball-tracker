@@ -110,6 +110,9 @@ class VideoCapture:
         else:
             self.frame_to_thresh = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
+        self.frame_to_thresh = cv2.erode(self.frame_to_thresh, None, iterations=2)
+        self.frame_to_thresh = cv2.dilate(self.frame_to_thresh, None, iterations=2)
+
         v1_min, v2_min, v3_min, v1_max, v2_max, v3_max = self.get_trackbar_values()
 
         thresh = cv2.inRange(self.frame_to_thresh, (v1_min, v2_min, v3_min), (v1_max, v2_max, v3_max))
