@@ -117,7 +117,7 @@ class Game:
                 M = cv2.moments(c)
                 center = (int(M["m10"] / M["m00"])+1, int(M["m01"] / M["m00"])+1)
 
-                if 4 < radius < 15:
+                if 3 < radius < 15:
                     self.gameManager.newBall(center, radius, label)
                     if label == 'black':
                         self.drawCircle(frame, center, x, y, radius, label, self.roiblack)
@@ -150,7 +150,7 @@ class Game:
         originialFrame = frame.copy()
         #kernel = np.ones((15, 15), np.float32) / 225
         #smoothed = cv2.filter2D(frame, -1, kernel)
-        blur = cv2.GaussianBlur(frame, (15, 15), 0)
+        blur = cv2.GaussianBlur(frame, (5, 5), 0)
         r = self.roi
         rb = self.roiblack
 
@@ -160,7 +160,7 @@ class Game:
             blackFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)[int(rb[1]):int(rb[1]+rb[3]), int(rb[0]):int(rb[0]+rb[2])]
             whiteFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
         elif self.rgb:
-            yellowFilter = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
+            yellowFilter = blur.copy()[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
             redFilter = blur.copy()[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]
             blackFilter = blur.copy()[int(rb[1]):int(rb[1]+rb[3]), int(rb[0]):int(rb[0]+rb[2])]
             whiteFilter = blur.copy()[int(r[1]):int(r[1]+r[3]), int(r[0]):int(r[0]+r[2])]

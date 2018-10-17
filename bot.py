@@ -41,7 +41,7 @@ class TableStateTracker:
 
     def update(self):
         ballData, frame = self.game.liveCount()
-        cv2.imwrite("tmp\%s-%s.jpg" % (self.signature, self.counter), frame)
+        #cv2.imwrite("tmp\%s-%s.jpg" % (self.signature, self.counter), frame)
         self.counter += 1
         self.stateQueue.append(self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1]))
         #print("Table state tracker updated")
@@ -55,7 +55,7 @@ class TableStateTracker:
         self.stateQueue.append(self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1].ballData))
         #print("Table state tracker updated")
 
-    def state(self, length, d=False):
+    def state(self, d=False):
         """
         Looks back over the last 5 mins (30 newest queue entries) and returns the determined table state
         :return:
@@ -63,7 +63,7 @@ class TableStateTracker:
             - The state record object of the latest capture
         """
         if d: print("\n")
-        sample = list(reversed(list(itertools.islice(self.stateQueue, len(self.stateQueue) - length, len(self.stateQueue)))))
+        sample = list(reversed(list(itertools.islice(self.stateQueue, len(self.stateQueue) - 24, len(self.stateQueue)))))
         for r in sample:
             if d: print("r: %s" %r.hasChanged)
             if r.hasChanged:
@@ -80,7 +80,6 @@ class BotHandler:
 
         self.game = Game()
         self.stateTracker = TableStateTracker(self.game)
-        self.restHandler = RestHandler(self.stateTracker)
         self.token = self.config['slack']['token']
         self.breakfastUsers = ['U632Q7URG', 'U5JRWM6KG', 'U6363BAMB', 'U5TRLN6LC']
 
@@ -90,6 +89,7 @@ class BotHandler:
 
         background.start()
         foreground.start()
+        self.restHandler = RestHandler(self.stateTracker)
 
     def slackBot(self):
         bot = SlackClient(self.token)
@@ -107,7 +107,7 @@ class BotHandler:
                 if m['type'] == 'message' and 'subtype' not in m:
                     if '<@UDBJQHB6H>' in m['text']:
                         if 'status' in m['text']:
-                            inUse, balls = self.stateTracker.state(24)
+                            inUse, balls = self.stateTracker.state()
                             response = ""
                             if inUse:
                                 response = "<@%s> The pool table is currently in use :sadpanda:" % m['user']
@@ -129,7 +129,7 @@ class BotHandler:
     def updateRecords(self):
         while True:
             self.stateTracker.update()
-            time.sleep(1)
+            time.sleep(4)
 
     def updateRecordsImage(self):
         while True:
@@ -144,7 +144,7 @@ class RestHandler:
             self.state = state
 
         def get(self):
-            inUse, balls = self.state.state(30)
+            inUse, balls = self.state.state()
             return {'inuse': inUse, 'balls': balls.ballData, 'lastChanged': self.state.stateQueue[len(self.state.stateQueue)-1].hasChanged}
 
     def __init__(self, state):
