@@ -7,6 +7,8 @@ import threading
 import itertools
 import cv2
 import random
+import logging
+import datetime
 from collections import deque
 from slackclient import SlackClient
 from tracker import Game
@@ -41,7 +43,6 @@ class TableStateTracker:
 
     def update(self):
         ballData, tracked = self.game.liveCount()
-        print(tracked)
         self.counter += 1
         rec = self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1])
         self.stateQueue.append(rec)
@@ -66,7 +67,7 @@ class TableStateTracker:
             - The state record object of the latest capture
         """
         if d: print("\n")
-        sample = list(reversed(list(itertools.islice(self.stateQueue, len(self.stateQueue) - 24, len(self.stateQueue)))))
+        sample = list(reversed(list(itertools.islice(self.stateQueue, len(self.stateQueue) - 17, len(self.stateQueue)))))
         for r in sample:
             if d: print("r: %s" %r.hasChanged)
             if r.hasChanged:
@@ -83,10 +84,18 @@ class BotHandler:
 
         self.game = Game()
         self.stateTracker = TableStateTracker(self.game)
+        self.loggedFreeTable = False
         self.token = self.config['slack']['token']
+        self.bot = SlackClient(self.token)
         self.breakfastUsers = ['U632Q7URG', 'U5JRWM6KG', 'U6363BAMB', 'U5TRLN6LC']
 
+        logging.basicConfig(filename='log.log', level=logging.DEBUG)
+        logging.getLogger('requests').setLevel(logging.CRITICAL)
+        self.logger = logging.getLogger('')
+
     def run(self):
+        #logging.basicConfig(filename="event_log.log", level=logging.INFO, format='$(asctime)s %(message)s$', datefmt='%m/%d/%Y %I:%M:%S %p - ')
+
         background = threading.Thread(name="background_updater", target=self.updateRecords)
         foreground = threading.Thread(name="foreground_bot", target=self.slackBot)
 
@@ -95,14 +104,12 @@ class BotHandler:
         self.restHandler = RestHandler(self.stateTracker)
 
     def slackBot(self):
-        bot = SlackClient(self.token)
-
-        if bot.rtm_connect(False):
-            while bot.server.connected:
-                self.messageHandler(bot.rtm_read(), bot)
+        if self.bot.rtm_connect(False):
+            while self.bot.server.connected:
+                self.messageHandler(self.bot.rtm_read())
                 time.sleep(1)
 
-    def messageHandler(self, msg, bot):
+    def messageHandler(self, msg):
         if len(msg) is 0:
             return
         for m in msg:
@@ -112,19 +119,21 @@ class BotHandler:
                         if 'status' in m['text']:
                             inUse, balls = self.stateTracker.state()
                             response = ""
+                            userDetails = self.bot.api_call("users.info", user=m['user'])['user']['profile']
                             if inUse:
                                 response = "<@%s> The pool table is currently in use :sadpanda:" % m['user']
-                                bot.rtm_send_message(m['channel'], response, m['ts'])
+                                self.bot.rtm_send_message(m['channel'], response, m['ts'])
+                                self.log("User: %s (%s) requested the table status and recieved response: %s" % (userDetails['real_name_normalized'], userDetails['display_name_normalized'], response))
                             else:
                                 response = "<@%s> The pool table is currently free! :happydance:" % m['user']
-                                bot.rtm_send_message(m['channel'], response, m['ts'])
+                                self.bot.rtm_send_message(m['channel'], response, m['ts'])
+                                self.log("User: %s (%s) requested the table status and recieved response: %s" % (userDetails['real_name_normalized'], userDetails['display_name_normalized'], response))
 
-                            print(m['user'] + " requested pool table status and received response: '%s'" % response)
                         elif 'what is going on here' in m['text']:
                             print(m['user'] + ' requested the current state of affairs')
                             if m['user'] in self.breakfastUsers:
                                 print(m['user'] + ' is worthy')
-                                print(bot.api_call('chat.postEphemeral', channel=m['channel'], user=m['user'],
+                                print(self.bot.api_call('chat.postEphemeral', channel=m['channel'], user=m['user'],
                                                    text='BREAKFAST', as_user=True))
                             else:
                                 print(m['user'] + ' is not worthy of the knowledge')
@@ -132,12 +141,42 @@ class BotHandler:
     def updateRecords(self):
         while True:
             self.stateTracker.update()
+            self.logTableState()
             time.sleep(4)
 
     def updateRecordsImage(self):
         while True:
             self.stateTracker.updateImage()
+            self.logTableState()
             time.sleep(9)
+
+    def logTableState(self):
+        inUse, _ = self.stateTracker.state()
+        if not inUse and not self.loggedFreeTable:
+            # Table has become free for the first time
+            self.loggedFreeTable = True
+            self.log("Table has become free")
+        elif inUse and self.loggedFreeTable:
+            # Table has transitioned from free to busy
+            self.loggedFreeTable = False
+            self.log("Table is not longer free")
+
+    def log(self, e, severity='info'):
+        
+        e = str(e)
+        now = datetime.datetime.now().strftime("%d/%b/%Y %H:%M:%S")
+        if severity == 'debug':
+            print("[%s][DEBUG] %s" % (now, e))
+            self.logger.debug("[%s] %s" % (now, e))
+        elif severity == 'error':
+            print("[%s][ERROR] %s" % (now, e))
+            self.logger.error("[%s] %s" % (now, e))
+        elif severity == 'info':
+            print("[%s][INFO] %s" % (now, e))
+            self.logger.info("[%s] %s" % (now, e))
+        else:
+            print("[%s][WARNING] %s" % (now, e))
+            self.logger.warning("[%s] %s" % (now, e))
 
 
 class RestHandler:
@@ -160,7 +199,7 @@ class RestHandler:
         self.thread.start()
 
     def run(self):
-        self.app.run()
+        #self.app.run()
         pass
 
 if __name__ == '__main__':
