@@ -1,8 +1,5 @@
 import json
 import time
-import os
-import sys
-import glob
 import threading
 import itertools
 import cv2
@@ -16,152 +13,16 @@ from flask import Flask, request
 from flask_restful import Resource, Api
 from flask_cors import CORS
 
-class TableStateTracker:
-    """
-    Keeps a running track of the tables state incase balls left on table after game
-    """
 
-    class StateRecord:
-
-        def __init__(self, ballData, previousRecord, first=False):
-            self.ballData = ballData
-            if first:
-                self.hasChanged = False
-            else:
-                self.hasChanged = previousRecord.ballData != self.ballData
-
-    def __init__(self, game):
-        self.game = game
-        ballData = self.game.liveCount()
-        self.stateQueue = deque([], 360)
-        self.stateQueue.append(self.StateRecord(ballData, None, first=True))
-        for i in range(360):
-            self.stateQueue.append(self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1]))
-        print("Table state tracker initialized")
-        self.folderName = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")
-        self.counter = 0
-        self.signature = random.randint(0,1000)
-
-    def update(self):
-        ballData= self.game.liveCount()
-        self.counter += 1
-        rec = self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1])
-        self.stateQueue.append(rec)
-        #cv2.imwrite("tmp\%s-%s.jpg" % (self.signature, self.counter), tracked)
-        #print("Table state tracker updated")
-        #print("%s - %s\n" % (ballData, self.stateQueue[len(self.stateQueue)-1].hasChanged))
-        
-
-    def updateImage(self):
-        # Look for most recent file in directory
-        filename = "img/%s.jpg" % str(min([int(x[:-4]) for x in glob.glob("img/*.jpg")]))
-        ballData = self.game.imageCount(filename)
-        self.stateQueue.append(self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1].ballData))
-        #print("Table state tracker updated")
-
-    def state(self, d=False):
-        """
-        Looks back over the last 5 mins (30 newest queue entries) and returns the determined table state
-        :return:
-            - Game in progress : bool
-            - The state record object of the latest capture
-        """
-        if d: print("\n")
-        sample = list(reversed(list(itertools.islice(self.stateQueue, len(self.stateQueue) - 17, len(self.stateQueue)))))
-        for r in sample:
-            if d: print("r: %s" %r.hasChanged)
-            if r.hasChanged:
-                return True, self.stateQueue[len(self.stateQueue) - 1]
-        else:
-            return False, self.stateQueue[len(self.stateQueue) - 1]
-        if d: print("\n")
-
-class BotHandler:
+class Logger:
 
     def __init__(self):
-        with open('config.json', 'r') as cfgfile:
-            self.config = json.load(cfgfile)
-
-        self.game = Game()
-        self.stateTracker = TableStateTracker(self.game)
-        self.loggedFreeTable = False
-        self.token = self.config['slack']['token']
-        self.bot = SlackClient(self.token)
-        self.breakfastUsers = ['U632Q7URG', 'U5JRWM6KG', 'U6363BAMB', 'U5TRLN6LC']
-
         logging.basicConfig(filename='log.log', level=logging.DEBUG)
         logging.getLogger('requests').setLevel(logging.CRITICAL)
         logging.getLogger('werkzeug').setLevel(logging.CRITICAL)
         self.logger = logging.getLogger('')
 
-    def run(self):
-        background = threading.Thread(name="background_updater", target=self.updateRecords)
-        foreground = threading.Thread(name="foreground_bot", target=self.slackBot)
-
-        background.start()
-        foreground.start()
-        self.restHandler = RestHandler(self.stateTracker)
-
-    def slackBot(self):
-        if self.bot.rtm_connect(False, auto_reconnect=True):
-            while self.bot.server.connected:
-                self.messageHandler(self.bot.rtm_read())
-                time.sleep(1)
-
-    def messageHandler(self, msg):
-        if len(msg) is 0:
-            return
-        for m in msg:
-            if 'type' in m:
-                if m['type'] == 'message' and 'subtype' not in m:
-                    if '<@UDBJQHB6H>' in m['text']:
-                        if 'status' in m['text']:
-                            inUse, balls = self.stateTracker.state()
-                            response = ""
-                            userDetails = self.bot.api_call("users.info", user=m['user'])['user']['profile']
-                            if inUse:
-                                response = "<@%s> The pool table is currently in use :sadpanda:" % m['user']
-                                self.bot.rtm_send_message(m['channel'], response, m['ts'])
-                                self.log("User: %s (%s) requested the table status and recieved response: %s" % (userDetails['real_name_normalized'], userDetails['display_name_normalized'], response))
-                            else:
-                                response = "<@%s> The pool table is currently free! :happydance:" % m['user']
-                                self.bot.rtm_send_message(m['channel'], response, m['ts'])
-                                self.log("User: %s (%s) requested the table status and recieved response: %s" % (userDetails['real_name_normalized'], userDetails['display_name_normalized'], response))
-
-                        elif 'what is going on here' in m['text']:
-                            print(m['user'] + ' requested the current state of affairs')
-                            if m['user'] in self.breakfastUsers:
-                                print(m['user'] + ' is worthy')
-                                print(self.bot.api_call('chat.postEphemeral', channel=m['channel'], user=m['user'],
-                                                   text='BREAKFAST', as_user=True))
-                            else:
-                                print(m['user'] + ' is not worthy of the knowledge')
-
-    def updateRecords(self):
-        while True:
-            self.stateTracker.update()
-            self.logTableState()
-            time.sleep(4)
-
-    def updateRecordsImage(self):
-        while True:
-            self.stateTracker.updateImage()
-            self.logTableState()
-            time.sleep(9)
-
-    def logTableState(self):
-        inUse, _ = self.stateTracker.state()
-        if not inUse and not self.loggedFreeTable:
-            # Table has become free for the first time
-            self.loggedFreeTable = True
-            self.log("Table has become free")
-        elif inUse and self.loggedFreeTable:
-            # Table has transitioned from free to busy
-            self.loggedFreeTable = False
-            self.log("Table is no longer free")
-
-    def log(self, e, severity='info'):
-        
+    def log(self, e, severity):
         e = str(e)
         now = datetime.datetime.now().strftime("%d/%b/%Y %H:%M:%S")
         if severity == 'debug':
@@ -179,14 +40,16 @@ class BotHandler:
 
 
 class RestHandler:
-    
+
     class State(Resource):
-        def __init__(self, state):
+        def __init__(self, state, logger):
             self.state = state
+            self.logger = logger
 
         def get(self):
-			inUse, balls = self.state.state()
-			return {'inuse': inUse, 'balls': balls.ballData, 'lastChanged': self.state.stateQueue[len(self.state.stateQueue)-1].hasChanged}
+            inUse, balls = self.state.state()
+            return {'inuse': inUse, 'balls': balls.ballData,
+                    'lastChanged': self.state.stateQueue[len(self.state.stateQueue) - 1].hasChanged}
 
     def __init__(self, state):
         self.state = state
@@ -199,6 +62,149 @@ class RestHandler:
 
     def run(self):
         self.app.run()
+
+
+class TableStateTracker:
+    """
+    Keeps a running track of the tables state incase balls left on table after game
+    """
+
+    class StateRecord:
+
+        def __init__(self, ballData, previousRecord, first=False):
+            self.ballData = ballData
+            if first:
+                self.hasChanged = False
+            else:
+                self.hasChanged = previousRecord.ballData != self.ballData
+
+    def __init__(self, game, logger):
+        self.game = game
+        self.logger = logger
+        ballData = self.game.liveCount()
+        self.stateQueue = deque([], 360)
+        self.stateQueue.append(self.StateRecord(ballData, None, first=True))
+        for i in range(360):
+            self.stateQueue.append(self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1]))
+        print("Table state tracker initialized")
+        self.folderName = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")
+        self.counter = 0
+        self.signature = random.randint(0,1000)
+
+    def update(self):
+        ballData= self.game.liveCount()
+        self.counter += 1
+        rec = self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1])
+        self.stateQueue.append(rec)
+        #cv2.imwrite("tmp\%s-%s.jpg" % (self.signature, self.counter), tracked)
+
+    def state(self):
+        """
+        Looks back over the last 5 mins (30 newest queue entries) and returns the determined table state
+        :return:
+            - Game in progress : bool
+            - The state record object of the latest capture
+        """
+        sample = list(reversed(list(itertools.islice(self.stateQueue, len(self.stateQueue) - 17, len(self.stateQueue)))))
+        for r in sample:
+            if r.hasChanged:
+                return True, self.stateQueue[len(self.stateQueue) - 1]
+        else:
+            return False, self.stateQueue[len(self.stateQueue) - 1]
+
+
+class BotHandler:
+
+    class MessageHandler:
+
+        def __init__(self, tracker, bot, logger):
+            self.stateTracker = tracker
+            self.bot = bot
+            self.logger = logger
+            self.breakfastUsers = ['U632Q7URG', 'U5JRWM6KG', 'U6363BAMB', 'U5TRLN6LC']
+
+        def process(self, msg):
+            if len(msg) is 0:
+                return None
+            for m in msg:
+                if 'type' in m:
+                    if m['type'] == 'message' and 'subtype' not in m:
+                        if '<@UDBJQHB6H>' in m['text']:
+                            if 'status' in m['text']:
+                                self._status(m)
+                            elif 'what is going on here' in m['text']:
+                                self._breakfast(m)
+
+        def _status(self, m):
+            inUse, balls = self.stateTracker.state()
+            response = ""
+            userDetails = self.bot.api_call("users.info", user=m['user'])['user']['profile']
+            if inUse:
+                response = "<@%s> The pool table is currently in use :sadpanda:" % m['user']
+                self.bot.rtm_send_message(m['channel'], response, m['ts'])
+                self.logger.log(
+                    "User: %s (%s) requested the table status and recieved response: %s" % (
+                        userDetails['real_name_normalized'], userDetails['display_name_normalized'],
+                        response))
+            else:
+                response = "<@%s> The pool table is currently free! :happydance:" % m['user']
+                self.bot.rtm_send_message(m['channel'], response, m['ts'])
+                self.logger.log(
+                    "User: %s (%s) requested the table status and recieved response: %s" % (
+                        userDetails['real_name_normalized'], userDetails['display_name_normalized'],
+                        response))
+
+        def _breakfast(self, m):
+            print(m['user'] + ' requested the current state of affairs')
+            if m['user'] in self.breakfastUsers:
+                print(m['user'] + ' is worthy')
+                print(self.bot.api_call('chat.postEphemeral', channel=m['channel'], user=m['user'],
+                                        text='BREAKFAST', as_user=True))
+            else:
+                print(m['user'] + ' is not worthy of the knowledge')
+
+    def __init__(self):
+        with open('config.json', 'r') as cfgfile:
+            self.config = json.load(cfgfile)
+        self.game = Game()
+        self.message = self.MessageHandler
+        self.logger = Logger()
+        self.stateTracker = TableStateTracker(self.game, self.logger)
+        self.loggedFreeTable = False
+        self.token = self.config['slack']['token']
+        self.bot = SlackClient(self.token)
+
+    def run(self):
+        background = threading.Thread(name="background_updater", target=self.updateRecords)
+        foreground = threading.Thread(name="foreground_bot", target=self.slackBot)
+
+        background.start()
+        foreground.start()
+        self.restHandler = RestHandler(self.stateTracker, self.logger)
+
+    def slackBot(self):
+        if self.bot.rtm_connect(False, auto_reconnect=True):
+            while self.bot.server.connected:
+                self.messageHandler(self.bot.rtm_read())
+                time.sleep(1)
+
+    def updateRecords(self):
+        while True:
+            self.stateTracker.update()
+            self.logTableState()
+            time.sleep(4)
+
+    def logTableState(self):
+        inUse, _ = self.stateTracker.state()
+        if not inUse and not self.loggedFreeTable:
+            # Table has become free for the first time
+            self.loggedFreeTable = True
+            self.logger.log("Table has become free")
+        elif inUse and self.loggedFreeTable:
+            # Table has transitioned from free to busy
+            self.loggedFreeTable = False
+            self.logger.log("Table is no longer free")
+
 
 if __name__ == '__main__':
     bothandler = BotHandler()
