@@ -1,2 +1,2 @@
 cd C:\Users\pool\poolballtracker
-python .\bot.py
+python .\bot.py > output.log

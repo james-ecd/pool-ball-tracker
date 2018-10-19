@@ -38,16 +38,16 @@ class TableStateTracker:
         for i in range(360):
             self.stateQueue.append(self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1]))
         print("Table state tracker initialized")
+        self.folderName = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M")
         self.counter = 0
         self.signature = random.randint(0,1000)
 
     def update(self):
-        ballData, tracked = self.game.liveCount()
+        ballData= self.game.liveCount()
         self.counter += 1
         rec = self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1])
         self.stateQueue.append(rec)
-        if rec.hasChanged:
-            cv2.imwrite("tmp\%s-%s.jpg" % (self.signature, self.counter), tracked)
+        #cv2.imwrite("tmp\%s-%s.jpg" % (self.signature, self.counter), tracked)
         #print("Table state tracker updated")
         #print("%s - %s\n" % (ballData, self.stateQueue[len(self.stateQueue)-1].hasChanged))
         
@@ -91,11 +91,10 @@ class BotHandler:
 
         logging.basicConfig(filename='log.log', level=logging.DEBUG)
         logging.getLogger('requests').setLevel(logging.CRITICAL)
+        logging.getLogger('werkzeug').setLevel(logging.CRITICAL)
         self.logger = logging.getLogger('')
 
     def run(self):
-        #logging.basicConfig(filename="event_log.log", level=logging.INFO, format='$(asctime)s %(message)s$', datefmt='%m/%d/%Y %I:%M:%S %p - ')
-
         background = threading.Thread(name="background_updater", target=self.updateRecords)
         foreground = threading.Thread(name="foreground_bot", target=self.slackBot)
 
@@ -104,7 +103,7 @@ class BotHandler:
         self.restHandler = RestHandler(self.stateTracker)
 
     def slackBot(self):
-        if self.bot.rtm_connect(False):
+        if self.bot.rtm_connect(False, auto_reconnect=True):
             while self.bot.server.connected:
                 self.messageHandler(self.bot.rtm_read())
                 time.sleep(1)
@@ -159,7 +158,7 @@ class BotHandler:
         elif inUse and self.loggedFreeTable:
             # Table has transitioned from free to busy
             self.loggedFreeTable = False
-            self.log("Table is not longer free")
+            self.log("Table is no longer free")
 
     def log(self, e, severity='info'):
         
@@ -186,8 +185,8 @@ class RestHandler:
             self.state = state
 
         def get(self):
-            inUse, balls = self.state.state()
-            return {'inuse': inUse, 'balls': balls.ballData, 'lastChanged': self.state.stateQueue[len(self.state.stateQueue)-1].hasChanged}
+			inUse, balls = self.state.state()
+			return {'inuse': inUse, 'balls': balls.ballData, 'lastChanged': self.state.stateQueue[len(self.state.stateQueue)-1].hasChanged}
 
     def __init__(self, state):
         self.state = state
@@ -199,8 +198,7 @@ class RestHandler:
         self.thread.start()
 
     def run(self):
-        #self.app.run()
-        pass
+        self.app.run()
 
 if __name__ == '__main__':
     bothandler = BotHandler()
