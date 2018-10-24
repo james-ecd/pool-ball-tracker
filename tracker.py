@@ -266,11 +266,11 @@ class Game:
         grabbed, frame = stream.read()
         if not grabbed:
             raise Exception('Problem reading frames from the webcam feed')
-        _, _ = self.processFrame(frame)
+        frame, _ = self.processFrame(frame)
 
         values = self.ballCounts()
         stream.release()
-        return values
+        return values, frame
 
     def imageCount(self, path):
         img = cv2.imread(self.args['image'], 0)

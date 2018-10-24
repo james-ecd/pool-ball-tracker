@@ -19,10 +19,10 @@ from flask_cors import CORS
 class Logger:
 
     def __init__(self):
-        logging.basicConfig(level=logging.DEBUG)
+        logging.basicConfig(filename="log.log", level=logging.DEBUG)
         logging.getLogger('requests').setLevel(logging.CRITICAL)
         logging.getLogger('werkzeug').setLevel(logging.CRITICAL)
-        self.logger = logging.getLogger('log.log')
+        self.logger = logging.getLogger('')
 
     def log(self, e, severity='info'):
         e = str(e)
@@ -53,12 +53,13 @@ class RestHandler:
             return {'inuse': inUse, 'balls': balls.ballData,
                     'lastChanged': self.state.stateQueue[len(self.state.stateQueue) - 1].hasChanged}
 
-    def __init__(self, state):
+    def __init__(self, state, logger):
         self.state = state
+        self.logger = logger
         self.app = Flask(__name__)
         self.api = Api(self.app)
         CORS(self.app)
-        self.api.add_resource(self.State, '/state', resource_class_kwargs={'state': self.state})
+        self.api.add_resource(self.State, '/state', resource_class_kwargs={'state': self.state, 'logger': self.logger})
         self.thread = threading.Thread(name='rest_thread', target=self.run)
         self.thread.start()
 
@@ -94,11 +95,11 @@ class TableStateTracker:
         self.signature = random.randint(0,1000)
 
     def update(self):
-        ballData= self.game.liveCount()
+        ballData, tracked = self.game.liveCount()
         self.counter += 1
         rec = self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1])
         self.stateQueue.append(rec)
-        #cv2.imwrite("tmp\%s-%s.jpg" % (self.signature, self.counter), tracked)
+        cv2.imwrite("tmp\%s-%s.jpg" % (self.signature, self.counter), tracked)
 
     def state(self):
         """
@@ -120,7 +121,7 @@ class BotHandler:
     class NotificationDB:
 
         def __init__(self):
-            self.conn = sqlite3.connect('notification.db')
+            self.conn = sqlite3.connect('notifications.db', check_same_thread=False)
             self.conn.text_factory = str
             self.c = self.conn.cursor()
 
@@ -133,7 +134,11 @@ class BotHandler:
 
         def getEntry(self, id):
             try:
-                return list(self.c.execute("SELECT * FROM notifications WHERE slackid = '%s'" % id))[0]
+                response = list(self.c.execute("SELECT * FROM notifications WHERE slackid = '%s'" % id))
+                if response:
+                    return list(self.c.execute("SELECT * FROM notifications WHERE slackid = '%s'" % id))[0]
+                else:
+                    return False
             except sqlite3.OperationalError as e:
                 return False
 
@@ -144,7 +149,7 @@ class BotHandler:
             return False
 
         def addEntry(self, name, id, expire):
-            self.c.execute("INSERT INTO notifications VALUES (%s, %s, %s)" % (name, id, expire))
+            self.c.execute("INSERT INTO notifications VALUES ('%s', '%s', %s)" % (name, id, expire))
 
 
     class MessageHandler:
@@ -168,6 +173,8 @@ class BotHandler:
                     if m['type'] == 'message' and 'subtype' not in m:
                         valid, command = self.validateCommand(m)
                         if valid:
+                            realName, displayName = self.getUserDetails(m)
+
                             if 'status' == command[0]:
                                 self._status(m)
                             elif 'what is going on here' in m['text']:
@@ -175,9 +182,18 @@ class BotHandler:
                             elif 'help' == command[0]:
                                 self._help(m)
                             elif 'notify' == command[0]:
-                                self._notify(command[1], m)
+                                if len(command) < 2:
+                                    self.reply(False, ":error-icon: *Please use correct command syntax. See `help` command for usage*", m)
+                                    self.logger.log("User: %s (%s) requested <%s> and got an incorrect syntax error" %
+                                            (realName, displayName, command))
+                                else:
+                                    self._notify(command[1], m)
                             elif 'exit' == command[0]:
                                 self._exit(m)
+                            else:
+                                self.reply(False, ":error-icon: *Command does not exist. See `help` command for usage*", m)
+                                self.logger.log("User: %s (%s) requested <%s> and got an incorrect syntax error" %
+                                            (realName, displayName, command))
 
         def validateCommand(self, m):
             if self.isDmToBot(m):
@@ -233,11 +249,12 @@ class BotHandler:
                     return chan['id']
 
         def _exit(self, m):
-            if m['user'] in self.breakfastUser:
+            if m['user'] in self.breakfastUsers:
                 raise Exception("Quit triggered from slack")
 
         def _notify(self, command, m):
-            realName, id = self.getUserDetails(m)
+            realName, displayName = self.getUserDetails(m)
+            id = m['user']
             if 'cancel' == command:
                 # Cancel notification command
                 if self.notificationDB.removeEntry(id):
@@ -265,12 +282,12 @@ class BotHandler:
                     self.notificationDB.removeEntry(id)
                     self.notificationDB.addEntry(realName, id, timeout)
                     self.logger.log("User: %s (%s) requested notifications for the next %s. Had to overwrite" %
-                                    (realName, id, command))
+                                    (realName, displayName, command))
                     self.reply(False, "*Old notification request overwritten. You will now receive table status notifications for the next* `%s`" % command, m)
                 else:
                     # No notification exists currently for this user
                     self.notificationDB.addEntry(realName, id, timeout)
-                    self.logger.log("User: %s (%s) requested notifications for the next %s" % (realName, id, command))
+                    self.logger.log("User: %s (%s) requested notifications for the next %s" % (realName, displayName, command))
                     self.reply(False, "*You will now receive table status notifications for the next* `%s`" % command, m)
 
         def _status(self, m):
@@ -279,9 +296,9 @@ class BotHandler:
             else:
                 inUse, balls = self.stateTracker.state()
             if inUse:
-                self.reply("status", "<@%s> The pool table is currently in use :sadpanda:" % m['user'], m, emotes="free")
+                self.reply("status", "<@%s> The pool table is currently in use :sadpanda:" % m['user'], m, emotes="busy")
             else:
-                self.reply("status", "<@%s> The pool table is currently free! :happydance:" % m['user'], m, emotes="busy")
+                self.reply("status", "<@%s> The pool table is currently free! :happydance:" % m['user'], m, emotes="free")
 
         def _breakfast(self, m):
             self.logger.log('%s requested the current state of affairs' % m['user'])
@@ -292,14 +309,27 @@ class BotHandler:
                 self.logger.log('%s is not worthy of the knowledge' % m['user'])
 
         def _help(self, m):
-            helpMessage = """*Commands*
------------------
+            helpMessage = """|---------------|
+| *Commands* |
+|---------------|
 . *status* *:*    _Check if the table is in use_
 . *notify* *<timeout>* *:*    _Notify me when the table becomes free for the next <period of time>_
-            - usage : `notify 10m`, `notify 2h`, `notify 1d`
+      - usage : `notify 10m`, `notify 2h`, `notify 1d`
 . *notify* *cancel* *:*    _Cancels a current notification period_
-. *help* *:*    _Displays command usage instructions_"""
-            self.reply("help", helpMessage, m)
+. *help* *:*    _Displays command usage instructions_
+
+|---------------|
+| *Interaction*  |
+|---------------|
+. *Recommended* :thumbsup:
+ - Add `@Cambridge Pool Table` as an app (side bar at the bottom)
+ - type commands in that app chat (no longer any need to @ the bot)
+. *Frowned Upon* :thumbdown:
+ - Tag @Cambridge Pool Table and then give it a command  in a channel
+ - Please only do this if you have good reason. No one likes chat spam and there's no reason to do it :buildisbad:"""
+            self.reply(False, helpMessage, m)
+            realName, displayName = self.getUserDetails(m)
+            self.logger.log("User: %s (%s) requested help" % (realName, displayName))
 
     def __init__(self):
         with open('config.json', 'r') as cfgfile:
