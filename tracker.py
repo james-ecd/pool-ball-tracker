@@ -79,6 +79,8 @@ class Game:
                         help='Use pre-recorded video source')
         ap.add_argument('-d', '--debug', required=False,
                         help='Toggles debugging features (shows masks etc)', action='store_true')
+        ap.add_argument('-r', '--record', required=False,
+                        help='Placeholder due to clash with bot args', action='store_true')
         args = vars(ap.parse_args())
 
         # TODO - Add checks for file extensions
@@ -117,7 +119,7 @@ class Game:
                 M = cv2.moments(c)
                 center = (int(M["m10"] / M["m00"])+1, int(M["m01"] / M["m00"])+1)
 
-                if 3 < radius < 15:
+                if 2 < radius < 15:
                     self.gameManager.newBall(center, radius, label)
                     if label == 'black':
                         self.drawCircle(frame, center, x, y, radius, label, self.roiblack)

@@ -8,6 +8,7 @@ import cv2
 import random
 import logging
 import datetime
+import sys
 from collections import deque
 from slackclient import SlackClient
 from tracker import Game
@@ -84,7 +85,7 @@ class TableStateTracker:
     def __init__(self, game, logger):
         self.game = game
         self.logger = logger
-        ballData = self.game.liveCount()
+        ballData, _ = self.game.liveCount()
         self.stateQueue = deque([], 360)
         self.stateQueue.append(self.StateRecord(ballData, None, first=True))
         for i in range(360):
@@ -99,7 +100,7 @@ class TableStateTracker:
         self.counter += 1
         rec = self.StateRecord(ballData, self.stateQueue[len(self.stateQueue) - 1])
         self.stateQueue.append(rec)
-        cv2.imwrite("tmp\%s-%s.jpg" % (self.signature, self.counter), tracked)
+        return tracked
 
     def state(self):
         """
@@ -145,11 +146,13 @@ class BotHandler:
         def removeEntry(self, id):
             if self.getEntry(id):
                 self.c.execute("DELETE FROM notifications WHERE slackid = '%s'" % id)
+                self.conn.commit()
                 return True
             return False
 
         def addEntry(self, name, id, expire):
             self.c.execute("INSERT INTO notifications VALUES ('%s', '%s', %s)" % (name, id, expire))
+            self.conn.commit()
 
 
     class MessageHandler:
@@ -197,9 +200,9 @@ class BotHandler:
 
         def validateCommand(self, m):
             if self.isDmToBot(m):
-                return True, m['text'].split()
+                return True, m['text'].lower().split()
             elif self.id in m['text']:
-                return True, m['text'].split()[1:]
+                return True, m['text'].lower().split()[1:]
             else:
                 return False, None
 
@@ -339,6 +342,7 @@ class BotHandler:
         self.logger = Logger()
         self.args = self.parseArgs()
         self.debug = self.args['debug']
+        self.recordFrame = self.args['record']
         self.notificationDB = self.NotificationDB()
         if self.debug:
             self.game = None
@@ -354,6 +358,8 @@ class BotHandler:
         ap = argparse.ArgumentParser()
         ap.add_argument('-d', '--debug', required=False,
                         help='Disable any opencv stuff', action='store_true')
+        ap.add_argument('-r', '--record', required=False,
+                        help='Records the modified frame when table transitions from free to busy', action='store_true')
         args = vars(ap.parse_args())
         return args
 
@@ -393,11 +399,11 @@ class BotHandler:
 
     def updateRecords(self):
         while True:
-            self.stateTracker.update()
-            self.trackTableState()
+            tracked = self.stateTracker.update()
+            self.trackTableState(tracked)
             time.sleep(4)
 
-    def trackTableState(self):
+    def trackTableState(self, tracked):
         # Track when table moves from inUse to Free and vice versa
         inUse, _ = self.stateTracker.state()
         if not inUse and not self.loggedFreeTable:
@@ -405,13 +411,29 @@ class BotHandler:
             self.loggedFreeTable = True
             self.logger.log("Table has become free")
             self.notifyUsers("*Notification:* :fire: _The pool table is now free_  :fire:")
+            if self.recordFrame:
+                cv2.imwrite("tmp\%s_%s.jpg" % (self.stateTracker.signature, self.stateTracker.counter), tracked)
         elif inUse and self.loggedFreeTable:
             # Table has transitioned from free to busy
             self.loggedFreeTable = False
             self.logger.log("Table is no longer free")
             self.notifyUsers("*Notification:* :angrylock: _The pool table is no longer free_  :angrylock:")
+            if self.recordFrame:
+                cv2.imwrite("tmp\%s-%s.jpg" % (self.stateTracker.signature, self.stateTracker.counter), tracked)
 
+                
+def handleUncaughtException(exctype, value, trace):
+    handler = logging.FileHandler("error.log")        
+    handler.setFormatter(formatter)
+
+    logger = logging.getLogger("exceptions")
+    logger.setLevel(logging.ERROR)
+    logger.addHandler(handler)
+    
+    logger.error("Type: %s  ->    Value: %s   ->  Trace:\n%s" % 
+                (exctype, value, trace))
 
 if __name__ == '__main__':
     bothandler = BotHandler()
+    sys.excepthook = handleUncaughtException
     bothandler.run()
