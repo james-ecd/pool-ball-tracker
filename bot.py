@@ -377,7 +377,10 @@ class BotHandler:
     def slackBot(self):
         if self.bot.rtm_connect(False, auto_reconnect=True):
             while self.bot.server.connected:
-                self.messageHandler.process(self.bot.rtm_read())
+                try:
+                    self.messageHandler.process(self.bot.rtm_read())
+                except Exception as e:
+                    self.logger.log(e, severity="error")
                 time.sleep(1)
 
     def notifyUsers(self, msg):
@@ -389,18 +392,24 @@ class BotHandler:
     def maintainNotificationDB(self):
         # Runs in a seperate thread and ensures entries removes from DB once timeout expired
         while True:
-            now = time.time()
-            entries = self.notificationDB.getAllEntries()
-            if entries:
-                for entry in entries:
-                    if now > entry[2]:
-                        self.notificationDB.removeEntry(entry[1])
+            try:
+                now = time.time()
+                entries = self.notificationDB.getAllEntries()
+                if entries:
+                    for entry in entries:
+                        if now > entry[2]:
+                            self.notificationDB.removeEntry(entry[1])
+            except Exception as e:
+                self.logger.log(e, severity="error")
             time.sleep(5)
 
     def updateRecords(self):
         while True:
-            tracked = self.stateTracker.update()
-            self.trackTableState(tracked)
+            try:
+                tracked = self.stateTracker.update()
+                self.trackTableState(tracked)
+            except Exception as e:
+                self.logger.log(e, severity="error")
             time.sleep(4)
 
     def trackTableState(self, tracked):
@@ -421,19 +430,7 @@ class BotHandler:
             if self.recordFrame:
                 cv2.imwrite("tmp\%s-%s.jpg" % (self.stateTracker.signature, self.stateTracker.counter), tracked)
 
-                
-def handleUncaughtException(exctype, value, trace):
-    handler = logging.FileHandler("error.log")        
-    handler.setFormatter(formatter)
-
-    logger = logging.getLogger("exceptions")
-    logger.setLevel(logging.ERROR)
-    logger.addHandler(handler)
-    
-    logger.error("Type: %s  ->    Value: %s   ->  Trace:\n%s" % 
-                (exctype, value, trace))
 
 if __name__ == '__main__':
     bothandler = BotHandler()
-    sys.excepthook = handleUncaughtException
     bothandler.run()
